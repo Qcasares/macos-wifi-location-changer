@@ -1,143 +1,144 @@
-# Mac OSX Wi-Fi Location Changer
+# LocationChanger
 
-* Automatically changes the Mac OSX network location when Wi-Fi connection SSID changes
-* Allows having different network settings depending on the Wi-Fi SSID
-* In case of no match, fallback to Automatic (or custom) Location
-* NEW: Change the location only in case it's not already in use (no action and no annoying notifications in case the location it's already the same)
+A macOS menubar app that automatically switches your **network location** when
+your **Wi-Fi SSID** changes. Useful if you move between networks with different
+proxies, DNS, VPN, or service order settings and want those to switch hands-free.
 
-**Note:** macOS Mojave compatible (tested with 10.14.6)
+Rewritten from the original bash script for **macOS 14 Sonoma and later**
+(including macOS 26 Tahoe) on Apple Silicon. The original used the `airport`
+CLI (removed in macOS Sonoma 14.4) and `/usr/local/bin` (Intel Homebrew); those
+no longer work, so this is a clean reimplementation in Swift.
 
-## Configuration
-There are two areas that need to be modified in the locationchanger script, Locations and SSIDs. Both of which are case sensitive. 
+## What's in the box
 
-### Locations
-Edit locationchanger and change/add locations to be set:
+- **LocationChanger.app** — SwiftUI menubar app. Shows current SSID and active
+  location; lets you edit SSID → location rules in a Settings window; toggles
+  launch-at-login via `SMAppService`.
+- **`locationchanger` helper** — Swift CLI embedded in the app bundle at
+  `Contents/Helpers/locationchanger`. Can be run standalone from a LaunchAgent
+  for a headless, GUI-less installation.
+- **`LocationChangerCore`** — shared Swift library with the rule engine,
+  config store, Wi-Fi monitor, location switcher, and notifier.
 
-```bash
-# LOCATIONS
-# (change the location names to match your MAC configuration, verify the location name withthe scselect command from CLI)
-# ============================================================
-LOCATION_HOME="Home"
-LOCATION_WORK="Work"
-LOCATION_AUTOMATIC="Automatic"  #Automatic location in case of no match, should be "Automatic", check with scselect command from CLI
+## Requirements
 
-```
+- macOS 14.0 or later
+- Apple Silicon or Intel Mac (a native-arch build works on either; CI produces
+  a universal2 binary)
+- Xcode Command Line Tools (`xcode-select --install`) for building from source
 
-**Note:** Ensure you use the exact names as they appear between parenthesis usign the command scselect from CLI:
-```bash
-$ scselect
-Defined sets include: (* == current set)
- * XXXXXXXX-AAAA-BBBB-CCCC-XXXXXXXXXXX	(Home)
-   YYYYYYYY-AAAA-BBBB-CCCC-YYYYYYYYYYY	(Work)
-   ZZZZZZZZ-AAAA-BBBB-CCCC-ZZZZZZZZZZZ	(Automatic)
-```
+## Install
 
-
-### SSIDs
-Edit locationchanger and add/edit SSIDs to be detected:
-
-```bash
-# SSIDS
-# (change the SSID names to match your Wi-Fi networks)
-# ============================================================
-SSID_HOME="Home-Wifi-SSID"
-SSID_WORK="Company-Wifi-SSID"
-```
-
-In case you need more SSID/Locations, Add SSIDs -> LOCATIONs and add a mapping to list before the generic cath all * ):
-
-```bash
-# SSID -> LOCATION mapping
-case $SSID in
-	$SSID_HOME )
-		if [ $CURRENT_LOCATION != "$LOCATION_HOME" ]
-		then
-			scselect "$LOCATION_HOME"
-			osascript -e 'display notification "Network Location Changed to '$LOCATION_HOME'" with title "Network Location Changed"'
-			echo "--> Location changed to: $LOCATION_HOME"
-		else
-			echo "--> No change, location was already: $LOCATION_HOME"
-
-		fi
-	;;
-	$SSID_WORK )
-		if [ $CURRENT_LOCATION != "$LOCATION_WORK" ]
-		then
-			scselect "$LOCATION_WORK"
-			osascript -e 'display notification "Network Location Changed to '$LOCATION_WORK'" with title "Network Location Changed"'
-			echo "--> Location changed to: $LOCATION_WORK"
-		else
-			echo "--> No change, location was already: $LOCATION_WORK"
-
-		fi
-	;;
-	* )
-		if [ $CURRENT_LOCATION != "$LOCATION_AUTOMATIC" ]
-		then
-			scselect "$LOCATION_AUTOMATIC"
-			osascript -e 'display notification "Network Location Changed to '$LOCATION_AUTOMATIC'" with title "Network Location Changed"'
-			echo "--> Location changed to: $LOCATION_AUTOMATIC"
-		else
-			echo "--> No change, location was already: $LOCATION_AUTOMATIC"
-		fi
-	;;
-esac
-```
-
-### MacOS Notifications
-The script triggers a MacOS Notification when a Location is changed.
-
-## Install the script
-
-### Automated Installation
-
-Execute:
 ```bash
 ./install.sh
 ```
 
-### Manual Installation
+That runs `make app`, copies `build/LocationChanger.app` to `/Applications`,
+and launches it. On first run the app will prompt you for:
 
-Copy these files:
-```bash
-cp locationchanger /usr/local/bin
-cp LocationChanger.plist ~/Library/LaunchAgents/
+1. **Location Services** — required. macOS 14+ only exposes the Wi-Fi SSID
+   to apps with Location authorization.
+2. **Notifications** — optional; controls the "Network Location Changed"
+   banner.
+
+Open the menubar icon (Wi-Fi glyph near the top-right) and pick **Settings…**
+to configure rules.
+
+## Configure
+
+All settings live in:
+
 ```
-Should you place the locationchanger script to another location, make sure you edit the path in LocationChanger.plist too.
-
-Make locationchanger script executable:
-```bash
-chmod +x /usr/local/bin/locationchanger
-```
-Load LocationChanger.plist as a launchd daemon:
-```bash
-launchctl load ~/Library/LaunchAgents/LocationChanger.plist
-```
-
-## Uninstall the script
-
-### Automatic
-
-Execute:
-```bash
-./uninstall.sh
+~/Library/Application Support/LocationChanger/config.json
 ```
 
-### Manual
-Execute:
-```bash
-launchctl unload ~/Library/LaunchAgents/LocationChanger.plist
-sudo rm ~/Library/LaunchAgents/LocationChanger.plist
-sudo rm /usr/local/bin/locationchanger
+Edit rules through the Settings window, or by hand:
+
+```json
+{
+  "fallback": "Automatic",
+  "notificationsEnabled": true,
+  "rules": [
+    { "id": "…", "ssid": "Home-Wifi-SSID",    "location": "Home" },
+    { "id": "…", "ssid": "Company-Wifi-SSID", "location": "Work" }
+  ]
+}
 ```
 
-## Logfile
+SSID matching is **case-insensitive**. If no rule matches the current SSID,
+the `fallback` location is used. Location names must match what's defined in
+**System Settings › Network › Locations** — or check from CLI:
 
-Logfile location can be adjusted in locationchanger
 ```bash
-exec &>/usr/local/var/log/locationchanger.log
+scselect
 ```
-See log in action:
+
+## Headless mode (no GUI)
+
+Install the app once so the helper binary is in place and the code signature
+is established, then wire up the LaunchAgent:
+
 ```bash
-tail -f /usr/local/var/log/locationchanger.log
+cp /Applications/LocationChanger.app/Contents/Library/LaunchAgents/com.locationchanger.agent.plist \
+   ~/Library/LaunchAgents/
+launchctl bootstrap "gui/$UID" ~/Library/LaunchAgents/com.locationchanger.agent.plist
 ```
+
+The agent fires the helper on any change to `State:/Network/Global/IPv4`
+(i.e. any network event, not just SSID changes — the helper is idempotent so
+that's safe). You can then quit the menubar app or set it not to launch at
+login.
+
+To remove:
+
+```bash
+launchctl bootout "gui/$UID/com.locationchanger.agent"
+rm ~/Library/LaunchAgents/com.locationchanger.agent.plist
+```
+
+## Logs
+
+All logging flows through `os.Logger` on the subsystem `com.locationchanger`.
+Tail it:
+
+```bash
+log stream --predicate 'subsystem == "com.locationchanger"' --level info
+```
+
+Or read back recent entries:
+
+```bash
+log show --predicate 'subsystem == "com.locationchanger"' --last 10m --style compact
+```
+
+## Building
+
+```bash
+make build        # release build of both executables (native arch)
+make app          # assemble build/LocationChanger.app (includes ad-hoc sign)
+make verify       # lipo + codesign verification
+make dmg          # wrap the .app in a distributable .dmg
+make test         # run the core test runner
+make clean
+```
+
+Set `DEVELOPER_ID="Developer ID Application: …"` before `make app` to sign
+with a real identity. `UNIVERSAL=1` triggers a fat arm64 + x86_64 build (needs
+full Xcode; Command Line Tools builds native-arch only).
+
+## Uninstall
+
+```bash
+./uninstall.sh              # removes app + config
+./uninstall.sh --keep-config  # leaves ~/Library/Application Support/LocationChanger
+```
+
+The script asks the app to cleanly unregister itself from launch-at-login
+before deletion. You may also want to revoke Location Services and
+Notification permissions from System Settings.
+
+## License
+
+MIT. Descended from
+[Domenico Silletti's locationchanger](https://github.com/domsi/macos-wifi-location-changer)
+script (Rocco Georgi, Onne Gorter).

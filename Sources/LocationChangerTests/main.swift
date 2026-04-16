@@ -136,6 +136,36 @@ func ruleEngineTests(_ r: Runner) {
     r.run("RuleEngine: empty rules") { t in
         t.expect(RuleEngine.resolve(ssid: "AnySSID", in: cfg(fallback: "Auto")), "Auto")
     }
+
+    r.run("RuleEngine.validate: clean config") { t in
+        let c = cfg(fallback: "Automatic", rules: [
+            Rule(ssid: "A", location: "Home"),
+            Rule(ssid: "B", location: "Work"),
+        ])
+        let v = RuleEngine.validate(c, against: ["Automatic", "Home", "Work"])
+        t.expectTrue(v.isClean, "isClean")
+        t.expectTrue(v.unknownRuleLocations.isEmpty, "no unknown rules")
+        t.expectTrue(!v.fallbackIsUnknown, "fallback known")
+    }
+
+    r.run("RuleEngine.validate: flags unknown rule location") { t in
+        let c = cfg(fallback: "Automatic", rules: [
+            Rule(ssid: "A", location: "Home"),
+            Rule(ssid: "B", location: "Nonexistent"),
+        ])
+        let v = RuleEngine.validate(c, against: ["Automatic", "Home"])
+        t.expect(v.unknownRuleLocations.count, 1)
+        t.expect(v.unknownRuleLocations.first?.ssid ?? "", "B")
+        t.expectTrue(!v.fallbackIsUnknown, "fallback still known")
+        t.expectTrue(!v.isClean, "not clean")
+    }
+
+    r.run("RuleEngine.validate: flags unknown fallback") { t in
+        let c = cfg(fallback: "GhostLocation", rules: [])
+        let v = RuleEngine.validate(c, against: ["Automatic", "Home"])
+        t.expectTrue(v.fallbackIsUnknown, "fallback flagged")
+        t.expectTrue(!v.isClean, "not clean")
+    }
 }
 
 // MARK: - Config

@@ -28,6 +28,14 @@ if [ -d "$APP_DIR" ]; then
 fi
 cp -R "$BUILD_APP" "$APP_DIR"
 
+CONFIG_DIR="$HOME/Library/Application Support/LocationChanger"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+if [ ! -f "$CONFIG_FILE" ] && [ -f config.example.json ]; then
+    echo "==> Seeding default config at $CONFIG_FILE"
+    mkdir -p "$CONFIG_DIR"
+    cp config.example.json "$CONFIG_FILE"
+fi
+
 echo "==> Launching LocationChanger"
 open "$APP_DIR"
 

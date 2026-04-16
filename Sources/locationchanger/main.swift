@@ -46,6 +46,17 @@ func main() -> Int32 {
         return ExitCode.switchFailed.rawValue
     }
 
+    // Warn (but don't fail) when rules reference locations that don't exist.
+    if let defined = try? switcher.availableLocations() {
+        let v = RuleEngine.validate(config, against: defined)
+        for rule in v.unknownRuleLocations {
+            log.notice("rule SSID=\(rule.ssid, privacy: .public) → unknown location \(rule.location, privacy: .public); skipped by scselect")
+        }
+        if v.fallbackIsUnknown {
+            log.notice("fallback \(config.fallback, privacy: .public) is not a defined location")
+        }
+    }
+
     if current == target {
         log.info("already at \(target, privacy: .public); no-op")
         return ExitCode.ok.rawValue

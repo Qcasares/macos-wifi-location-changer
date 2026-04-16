@@ -9,6 +9,12 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            if !model.validation.isClean {
+                Section {
+                    validationWarning
+                }
+            }
+
             Section("General") {
                 Picker("Fallback location", selection: Binding(
                     get: { model.config.fallback },
@@ -74,6 +80,27 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .onAppear { model.refreshAvailableLocations() }
+    }
+
+    private var validationWarning: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Some rules point to locations that don't exist in System Settings", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.callout.bold())
+            if model.validation.fallbackIsUnknown {
+                Text("Fallback '\(model.config.fallback)' is not a defined network location.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(model.validation.unknownRuleLocations) { rule in
+                Text("SSID '\(rule.ssid)' → missing location '\(rule.location)'")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Fix by changing the location to one of the picker options, or define it in System Settings › Network › Locations.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
     }
 
     private func availablePickerItems() -> [String] {

@@ -1,0 +1,16 @@
+{
+  "fallback": "Automatic",
+  "notificationsEnabled": true,
+  "rules": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "ssid": "Home-Wifi-SSID",
+      "location": "Home"
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "ssid": "Company-Wifi-SSID",
+      "location": "Work"
+    }
+  ]
+}

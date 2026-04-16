@@ -52,6 +52,9 @@ All settings live in:
 ~/Library/Application Support/LocationChanger/config.json
 ```
 
+A template is shipped at `config.example.json` at the repo root — copy it to
+the path above to pre-seed the config before first launch if you prefer.
+
 Edit rules through the Settings window, or by hand:
 
 ```json

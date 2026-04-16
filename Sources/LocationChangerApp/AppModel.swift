@@ -11,6 +11,7 @@ final class AppModel: ObservableObject {
     @Published var availableLocations: [String] = []
     @Published var lastSwitchAt: Date?
     @Published var errorMessage: String?
+    @Published var validation: ConfigValidation = ConfigValidation(unknownRuleLocations: [], fallbackIsUnknown: false)
 
     private let store: ConfigStore
     private let switcher = LocationSwitcher()
@@ -94,6 +95,18 @@ final class AppModel: ObservableObject {
             LocationChangerLog.app.error("availableLocations failed: \(String(describing: error), privacy: .public)")
             availableLocations = []
         }
+        refreshValidation()
+    }
+
+    private func refreshValidation() {
+        let v = RuleEngine.validate(config, against: availableLocations)
+        validation = v
+        for rule in v.unknownRuleLocations {
+            LocationChangerLog.app.notice("rule SSID=\(rule.ssid, privacy: .public) → unknown location \(rule.location, privacy: .public)")
+        }
+        if v.fallbackIsUnknown {
+            LocationChangerLog.app.notice("fallback \(self.config.fallback, privacy: .public) is not a defined location")
+        }
     }
 
     // MARK: - Config mutation
@@ -133,6 +146,7 @@ final class AppModel: ObservableObject {
             LocationChangerLog.app.error("config save failed: \(String(describing: error), privacy: .public)")
             errorMessage = "Config save failed: \(error)"
         }
+        refreshValidation()
     }
 
     var configFileURL: URL { store.fileURL }

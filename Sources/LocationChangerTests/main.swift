@@ -166,6 +166,36 @@ func ruleEngineTests(_ r: Runner) {
         t.expectTrue(v.fallbackIsUnknown, "fallback flagged")
         t.expectTrue(!v.isClean, "not clean")
     }
+
+    r.run("RuleEngine.explain: matched returns the rule") { t in
+        let rule = Rule(ssid: "Home", location: "HomeLoc")
+        let c = cfg(rules: [rule, Rule(ssid: "Work", location: "WorkLoc")])
+        let res = RuleEngine.explain(ssid: "Home", in: c)
+        if case .matched(let m) = res {
+            t.expect(m.ssid, "Home")
+            t.expect(m.location, "HomeLoc")
+            t.expect(m.id, rule.id)
+        } else {
+            t.expectTrue(false, "expected .matched, got \(res)")
+        }
+    }
+
+    r.run("RuleEngine.explain: nil/empty ssid → .fallback(.noSSID)") { t in
+        let c = cfg(rules: [Rule(ssid: "Home", location: "HomeLoc")])
+        t.expectTrue(RuleEngine.explain(ssid: nil, in: c) == .fallback(.noSSID), "nil")
+        t.expectTrue(RuleEngine.explain(ssid: "", in: c) == .fallback(.noSSID), "empty")
+    }
+
+    r.run("RuleEngine.explain: no matching rule → .fallback(.noRuleMatched)") { t in
+        let c = cfg(rules: [Rule(ssid: "Home", location: "HomeLoc")])
+        t.expectTrue(RuleEngine.explain(ssid: "Cafe", in: c) == .fallback(.noRuleMatched), "no match")
+    }
+
+    r.run("RuleEngine.explain: case-insensitive match preserved") { t in
+        let c = cfg(rules: [Rule(ssid: "Home-WiFi", location: "HomeLoc")])
+        let res = RuleEngine.explain(ssid: "home-wifi", in: c)
+        t.expectTrue(res.targetLocation == "HomeLoc", "resolved target")
+    }
 }
 
 // MARK: - Config

@@ -1,5 +1,7 @@
 import Foundation
 import SwiftUI
+import AppKit
+import CoreLocation
 import ServiceManagement
 import LocationChangerCore
 
@@ -46,9 +48,29 @@ final class AppModel: ObservableObject {
                     self?.handleSSIDChange(ssid)
                 }
             }
+            // Re-sync current location after the monitor is up, so a just-granted
+            // Location auth doesn't leave us displaying the init-time snapshot.
+            if let now = try? switcher.currentLocation() {
+                currentLocation = now
+            }
         } catch {
             LocationChangerLog.app.error("monitor start failed: \(String(describing: error), privacy: .public)")
             errorMessage = "Wi-Fi monitor failed to start: \(error)"
+        }
+        observeWindowFocusForRefresh()
+    }
+
+    private var windowFocusObserver: NSObjectProtocol?
+    private func observeWindowFocusForRefresh() {
+        guard windowFocusObserver == nil else { return }
+        windowFocusObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshAvailableLocations()
+            }
         }
     }
 
@@ -61,6 +83,37 @@ final class AppModel: ObservableObject {
     func switchNow() {
         let target = RuleEngine.resolve(ssid: currentSSID, in: config)
         applyLocation(target, trigger: "manual")
+    }
+
+    // MARK: - Derived state for UI
+
+    /// Current Location Services authorization. macOS 14+ requires this to be
+    /// `.authorizedWhenInUse` or `.authorized*` for CoreWLAN to return a real SSID.
+    var authorizationStatus: CLAuthorizationStatus {
+        monitor.authorizationStatus
+    }
+
+    /// The rule that matches the current SSID, or nil when the fallback is in effect.
+    var resolution: Resolution {
+        RuleEngine.explain(ssid: currentSSID, in: config)
+    }
+
+    var matchedRule: Rule? {
+        if case .matched(let rule) = resolution { return rule }
+        return nil
+    }
+
+    /// True when another rule in the list already claims the same SSID
+    /// (case-insensitive). Used to mark duplicates in the table and block
+    /// the editor sheet's Save button.
+    func isDuplicateSSID(_ ssid: String, excluding id: UUID? = nil) -> Bool {
+        let needle = ssid.lowercased()
+        return config.rules.contains { $0.ssid.lowercased() == needle && $0.id != id }
+    }
+
+    /// Flag a rule whose target location is no longer defined in System Settings.
+    func isRuleLocationUnknown(_ rule: Rule) -> Bool {
+        !availableLocations.contains(rule.location)
     }
 
     private func applyLocation(_ target: String, trigger: String) {
@@ -119,6 +172,25 @@ final class AppModel: ObservableObject {
 
     func removeRules(at offsets: IndexSet) {
         config.rules.remove(atOffsets: offsets)
+        saveConfig()
+    }
+
+    func removeRule(id: UUID) {
+        config.rules.removeAll { $0.id == id }
+        saveConfig()
+    }
+
+    func moveRules(from source: IndexSet, to destination: Int) {
+        config.rules.move(fromOffsets: source, toOffset: destination)
+        saveConfig()
+    }
+
+    func upsertRule(_ rule: Rule) {
+        if let i = config.rules.firstIndex(where: { $0.id == rule.id }) {
+            config.rules[i] = rule
+        } else {
+            config.rules.append(rule)
+        }
         saveConfig()
     }
 

@@ -10,6 +10,9 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if needsAuthCTA {
+                locationAuthStrip
+            }
             if !model.validation.isClean {
                 validationStrip
             }
@@ -24,6 +27,74 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: 320)
+    }
+
+    // MARK: - Location auth CTA
+
+    private var needsAuthCTA: Bool {
+        switch model.authorizationStatus {
+        case .denied, .restricted, .notDetermined: return true
+        default: return false
+        }
+    }
+
+    private var locationAuthStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Location Services needed")
+                        .font(.callout.weight(.medium))
+                    Text(locationAuthExplanation)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+            }
+            HStack(spacing: 8) {
+                if model.authorizationStatus == .notDetermined {
+                    Button {
+                        model.requestLocationAuthorization()
+                    } label: {
+                        Label("Request permission", systemImage: "location")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    Button {
+                        model.openLocationServicesSettings()
+                    } label: {
+                        Label("Open settings", systemImage: "arrow.up.forward.square")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                } else {
+                    Button {
+                        model.openLocationServicesSettings()
+                    } label: {
+                        Label("Open Location Services", systemImage: "arrow.up.forward.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(10)
+        .background(.orange.opacity(0.12), in: .rect(cornerRadius: 6))
+    }
+
+    private var locationAuthExplanation: String {
+        switch model.authorizationStatus {
+        case .notDetermined:
+            return "macOS asks once per install. Approve it so LocationChanger can read the current SSID."
+        case .denied:
+            return "Open System Settings and enable LocationChanger under Privacy & Security › Location Services."
+        case .restricted:
+            return "Location Services is restricted on this Mac (MDM policy). Contact your administrator."
+        default:
+            return ""
+        }
     }
 
     private var firstRunHint: some View {

@@ -86,6 +86,20 @@ struct RulesTabView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
+
+            if authBlocked {
+                VStack(spacing: 6) {
+                    Label("Location Services is needed to read your Wi-Fi SSID.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button {
+                        model.openLocationServicesSettings()
+                    } label: {
+                        Label("Open Location Services", systemImage: "arrow.up.forward.square")
+                    }
+                }
+            }
+
             Button {
                 showingAdd = true
             } label: {
@@ -97,6 +111,13 @@ struct RulesTabView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    private var authBlocked: Bool {
+        switch model.authorizationStatus {
+        case .denied, .restricted: return true
+        default: return false
+        }
     }
 
     // MARK: - Rules list

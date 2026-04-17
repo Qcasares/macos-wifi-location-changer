@@ -40,6 +40,11 @@ final class AppModel: ObservableObject {
 
     func bootstrap() {
         refreshAvailableLocations()
+        monitor.onAuthorizationChange = { [weak self] in
+            Task { @MainActor in
+                self?.handleAuthorizationChange()
+            }
+        }
         monitor.requestAuthorization()
         Task { await notifier.requestAuthorization() }
         do {
@@ -60,7 +65,33 @@ final class AppModel: ObservableObject {
         observeWindowFocusForRefresh()
     }
 
-    private var windowFocusObserver: NSObjectProtocol?
+    private func handleAuthorizationChange() {
+        // CoreWLAN reveals the real SSID only after auth is granted; re-read it
+        // so the status card stops showing "—" as soon as the user accepts.
+        if let ssid = WiFiMonitor.currentSSID() {
+            currentSSID = ssid
+        }
+        objectWillChange.send()
+    }
+
+    // MARK: - Deep links
+
+    /// Open Privacy & Security → Location Services.
+    func openLocationServicesSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Present the system prompt; a no-op after the first response, in which
+    /// case callers should fall back to `openLocationServicesSettings()`.
+    func requestLocationAuthorization() {
+        monitor.requestAuthorization()
+    }
+
+    // nonisolated(unsafe): observer is set/read only from MainActor, except
+    // in `deinit` which is nonisolated in Swift 6. By that point no concurrent
+    // access is possible so the unsafe opt-out is sound.
+    private nonisolated(unsafe) var windowFocusObserver: NSObjectProtocol?
     private func observeWindowFocusForRefresh() {
         guard windowFocusObserver == nil else { return }
         windowFocusObserver = NotificationCenter.default.addObserver(
@@ -71,6 +102,12 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self?.refreshAvailableLocations()
             }
+        }
+    }
+
+    deinit {
+        if let obs = windowFocusObserver {
+            NotificationCenter.default.removeObserver(obs)
         }
     }
 
@@ -240,10 +277,17 @@ final class AppModel: ObservableObject {
             } else {
                 try SMAppService.mainApp.unregister()
             }
-            objectWillChange.send()
+            errorMessage = nil
         } catch {
             LocationChangerLog.app.error("SMAppService toggle failed: \(String(describing: error), privacy: .public)")
-            errorMessage = "Launch-at-login toggle failed: \(error)"
+            // Ad-hoc-signed builds cannot register via SMAppService. Surface
+            // the failure prominently — the computed property backing the
+            // toggle will now reflect the real (unchanged) status.
+            errorMessage = "Launch-at-login toggle failed. Ad-hoc signed builds can't register with Service Management; ship a Developer ID signed build to use this."
         }
+        // Always re-publish so the SwiftUI toggle's get binding refreshes.
+        // Without this a failed register() leaves the toggle visually ON
+        // while the underlying status is still .notRegistered.
+        objectWillChange.send()
     }
 }

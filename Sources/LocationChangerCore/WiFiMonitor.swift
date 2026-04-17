@@ -25,17 +25,21 @@ public enum WiFiError: Error, CustomStringConvertible {
 /// On macOS 14+ the SSID read requires Location Services authorization;
 /// callers that need live SSIDs must have requested it.
 @MainActor
-public final class WiFiMonitor: NSObject, @preconcurrency CWEventDelegate {
+public final class WiFiMonitor: NSObject, CWEventDelegate, CLLocationManagerDelegate {
     public static let shared = WiFiMonitor()
 
     private let client = CWWiFiClient.shared()
     private var handler: ((String?) -> Void)?
-    private let locationDelegate = LocationAuthDelegate()
     private let locationManager = CLLocationManager()
+
+    /// Fires on every `locationManagerDidChangeAuthorization` callback so UI
+    /// can re-render when the user grants/denies/changes the permission
+    /// (including returning from System Settings).
+    public var onAuthorizationChange: (() -> Void)?
 
     public override init() {
         super.init()
-        locationManager.delegate = locationDelegate
+        locationManager.delegate = self
     }
 
     /// One-shot: returns the SSID of the default Wi-Fi interface, or nil
@@ -43,6 +47,23 @@ public final class WiFiMonitor: NSObject, @preconcurrency CWEventDelegate {
     public nonisolated static func currentSSID() -> String? {
         guard let iface = CWWiFiClient.shared().interface() else { return nil }
         return iface.ssid()
+    }
+
+    /// Saved Wi-Fi network profiles in preferred-order. Populates rule-editor
+    /// pickers so the user doesn't have to type SSIDs by hand. Returns an
+    /// empty array if the interface or configuration isn't available.
+    public nonisolated static func knownSSIDs() -> [String] {
+        guard let iface = CWWiFiClient.shared().interface() else { return [] }
+        let profiles = iface.configuration()?.networkProfiles
+        let list = profiles?.array as? [CWNetworkProfile] ?? []
+        var seen = Set<String>()
+        var out: [String] = []
+        for profile in list {
+            if let ssid = profile.ssid, !ssid.isEmpty, seen.insert(ssid).inserted {
+                out.append(ssid)
+            }
+        }
+        return out
     }
 
     /// Current authorization status for the Location Services prompt that
@@ -80,23 +101,39 @@ public final class WiFiMonitor: NSObject, @preconcurrency CWEventDelegate {
     }
 
     // MARK: - CWEventDelegate
+    //
+    // CoreWLAN delivers these callbacks on a background dispatch queue
+    // (com.apple.wifi.xpcclient.event.*). The methods must be `nonisolated`
+    // so they don't attempt to assert MainActor on that queue — the runtime
+    // check fires otherwise and the process traps with EXC_BREAKPOINT.
+    // We hop to MainActor explicitly for any isolated state access.
 
-    public func ssidDidChangeForWiFiInterface(withName interfaceName: String) {
-        let ssid = client.interface(withName: interfaceName)?.ssid()
+    public nonisolated func ssidDidChangeForWiFiInterface(withName interfaceName: String) {
+        let ssid = CWWiFiClient.shared().interface(withName: interfaceName)?.ssid()
         LocationChangerLog.wifi.info("ssidDidChange: \(ssid ?? "<nil>", privacy: .public)")
-        handler?(ssid)
+        Task { @MainActor [weak self] in
+            self?.handler?(ssid)
+        }
     }
 
-    public func linkDidChangeForWiFiInterface(withName interfaceName: String) {
-        let ssid = client.interface(withName: interfaceName)?.ssid()
+    public nonisolated func linkDidChangeForWiFiInterface(withName interfaceName: String) {
+        let ssid = CWWiFiClient.shared().interface(withName: interfaceName)?.ssid()
         LocationChangerLog.wifi.info("linkDidChange ssid=\(ssid ?? "<nil>", privacy: .public)")
-        handler?(ssid)
+        Task { @MainActor [weak self] in
+            self?.handler?(ssid)
+        }
     }
-}
 
-/// Minimal CLLocationManagerDelegate so the system prompt doesn't cause a warning.
-private final class LocationAuthDelegate: NSObject, CLLocationManagerDelegate {
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        LocationChangerLog.wifi.info("location auth status: \(manager.authorizationStatus.rawValue)")
+    // MARK: - CLLocationManagerDelegate
+    //
+    // Same isolation rule applies — CLLocationManager dispatches on its own
+    // queue on macOS.
+
+    public nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        LocationChangerLog.wifi.info("location auth status: \(status.rawValue)")
+        Task { @MainActor [weak self] in
+            self?.onAuthorizationChange?()
+        }
     }
 }

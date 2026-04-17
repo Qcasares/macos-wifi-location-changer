@@ -55,10 +55,16 @@ struct GeneralTabView: View {
                         .foregroundStyle(.primary)
                 }
                 HStack {
+                    // Bind to the real stored value — invalid or not — and show
+                    // it as a visibly-broken option in the menu. That keeps UI
+                    // and storage in sync until the user explicitly picks a
+                    // defined location to replace it.
                     Picker("Pick a defined location", selection: Binding(
-                        get: { model.availableLocations.contains(model.config.fallback) ? model.config.fallback : (model.availableLocations.first ?? "") },
+                        get: { model.config.fallback },
                         set: { model.setFallback($0) }
                     )) {
+                        Text("\(model.config.fallback) — not defined").tag(model.config.fallback)
+                        Divider()
                         ForEach(model.availableLocations, id: \.self) { name in
                             Text(name).tag(name)
                         }

@@ -30,8 +30,6 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
-    <key>NSLocationUsageDescription</key>
-    <string>LocationChanger reads the current Wi-Fi SSID to pick the matching network location. macOS requires Location Services authorization to expose the SSID on macOS 14 and later.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>LocationChanger reads the current Wi-Fi SSID to pick the matching network location. macOS requires Location Services authorization to expose the SSID on macOS 14 and later.</string>
     <key>NSHumanReadableCopyright</key>

@@ -10,10 +10,24 @@ public struct Notifier: Sendable {
     public init() {}
 
     public func requestAuthorization() async {
+        // Skip when the user has already answered. Re-prompting a denied
+        // app just logs the same error on every launch — the only path
+        // back to "allowed" is System Settings.
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .notDetermined, .provisional:
+            break
+        default:
+            return
+        }
         do {
             _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
         } catch {
-            LocationChangerLog.notifier.error("auth request failed: \(error.localizedDescription, privacy: .public)")
+            // Most common cause on dev builds is ad-hoc code signing:
+            // UNUserNotificationCenter refuses authorization requests when
+            // the bundle isn't signed with a real Developer ID. Log once
+            // at .notice, not .error.
+            LocationChangerLog.notifier.notice("auth request failed (expected on ad-hoc signed builds): \(error.localizedDescription, privacy: .public)")
         }
     }
 

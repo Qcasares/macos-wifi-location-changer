@@ -36,6 +36,12 @@ final class AppModel: ObservableObject {
         self.store = resolvedStore
         self.config = resolvedConfig
         self.currentLocation = (try? switcher.currentLocation()) ?? "?"
+
+        // Start Wi-Fi monitoring + observers at app launch rather than on
+        // first menubar click — otherwise the app does no background work
+        // until the user opens the dropdown, defeating the point of a
+        // menubar agent.
+        bootstrap()
     }
 
     func bootstrap() {

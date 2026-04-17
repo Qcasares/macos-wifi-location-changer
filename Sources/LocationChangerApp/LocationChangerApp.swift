@@ -20,7 +20,6 @@ struct LocationChangerApp: App {
         MenuBarExtra("LocationChanger", systemImage: "wifi.square") {
             MenuBarView()
                 .environmentObject(model)
-                .task { model.bootstrap() }
         }
         .menuBarExtraStyle(.window)
 
